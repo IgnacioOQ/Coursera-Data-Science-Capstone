@@ -1,0 +1,139 @@
+---
+title: 'Preprocessing for the Shiny App - Coursera Data Science Capstone'
+author: "Ignacio Ojea Quintana"
+date: "06/21/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+ptm <- proc.time() # This is just to keep track of the processing time for this markdown
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Peer-graded Assignment: Milestone Report
+
+ Sections:
+
+  1. Loading the data
+  2. Sampling and cleaning the data
+  3. Generating the necessary N-Grams
+
+## Loading the Data
+
+First I will load the relevant libraries:
+
+```{r, message=FALSE, warning=FALSE}
+library(tm)
+library(LaF)
+library(ngram)
+library(corpus)
+library(wordcloud2)
+library(gridExtra)
+library(ggplot2)
+```
+
+Second I will load the data.
+
+```{r, warning=FALSE}
+# Notice that these files are not included in the app but downloaded from: https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip
+twitterURL <- file("data/en_US.twitter.txt", open = "rb") 
+blogsURL <- file("data/en_US.blogs.txt", open="rb")
+newsURL <- file("data/en_US.news.txt", open = "rb") 
+
+# Load the data
+twitter <- readLines(twitterURL, encoding = 'UTF-8', skipNul = TRUE)
+blog <- readLines(blogsURL, encoding = 'UTF-8', skipNul = TRUE)
+news <- readLines(newsURL, encoding = 'UTF-8', skipNul = TRUE)
+```
+
+## 2. Sampling and Cleaning Data
+
+I will start by sampling the data and generating a corpus. I will take 5% for a sample.
+The cleaning will be the next step. The order could be inversed but the cleaning takes a lot of time if we take the whole data set.
+
+```{r, warning=F}
+set.seed(1234)
+
+sample <- c(sample(twitter, length(twitter) * 0.05),
+                 sample(blog, length(blog) * 0.05),
+                 sample(news, length(news) * 0.05))
+```
+
+For a *cleaning* step I remove several things:
+
+  + Remove all non-English non-ASCII characters from our sample.
+  + Some profanity words. My list of profanity words comes from: http://www.cs.cmu.edu/~biglou/resources/. It is somewhat arbitrary but it is a start. 
+  + Convert everything to lower case.
+  + Remove URL, email addresses, Twitter handles and hash tags
+  + Remove Numbers
+  + Remove punctuation
+  + Remove extra spaces
+
+I here make heavy use of the *tm* package.
+
+```{r, warning=FALSE}
+# Convert to ASCII
+sample <- iconv(sample, "latin1", "ASCII", sub="")
+
+# convert text to lowercase
+sample <- tolower(sample)
+
+# remove profane words
+naughtywords = readLines("data/bad-words.txt", encoding = 'UTF-8', skipNul = TRUE)
+naughtywords <- iconv(naughtywords, "latin1", "ASCII", sub = "")
+nauthywords <- tolower(naughtywords)
+sample <- removeWords(sample, naughtywords)
+
+# remove URL, email addresses, Twitter handles and hash tags
+sample <- gsub("(f|ht)tp(s?)://(.*)[.][a-z]+", "", sample, ignore.case = FALSE, perl = TRUE)
+sample <- gsub("\\S+[@]\\S+", "", sample, ignore.case = FALSE, perl = TRUE)
+sample <- gsub("@[^\\s]+", "", sample, ignore.case = FALSE, perl = TRUE)
+sample <- gsub("#[^\\s]+", "", sample, ignore.case = FALSE, perl = TRUE)
+
+# remove ordinal numbers
+sample <- gsub("[0-9](?:st|nd|rd|th)", "", sample, ignore.case = FALSE, perl = TRUE)
+
+# remove punctuation
+sample <- gsub("[^\\p{L}'\\s]+", "", sample, ignore.case = FALSE, perl = TRUE)
+sample <- gsub("[.\\-!]", " ", sample, ignore.case = FALSE, perl = TRUE)
+
+# trim leading and trailing whitespace
+sample <- gsub("^\\s+|\\s+$", "", sample)
+sample <- stripWhitespace(sample)
+
+# Save sample data
+saveRDS(sample, file = "./cleansamplecorpus.RData")
+```
+
+#### Table of N-Grams
+
+I will use the the package *corpus* because I find it quite handy:
+
+  + https://cran.r-project.org/web/packages/corpus/index.html
+  + https://cran.r-project.org/web/packages/corpus/vignettes/corpus.html
+  
+Some people use the *RWeka* package to, or *ngram*.
+
+```{r, warning=FALSE}
+# I first need to format the data to the type of object the tm package can handle; a corpus.
+sample <- Corpus(VectorSource(sample), readerControl = list(reader=readPlain, language="en_US"))
+
+unigram <- term_stats(sample, ngrams=1, types=TRUE)
+unigram <- unigram[unigram$count > 10,] # to make computations easier
+saveRDS(unigram, file = "data/unigram.RData")
+
+bigram <- term_stats(sample, ngrams=2, types=TRUE)
+bigram <- bigram[bigram$count > 7,]  # same here
+saveRDS(bigram, file = "data/bigram.RData")
+
+trigram <- term_stats(sample, ngrams=3, types=TRUE)
+trigram <- trigram[trigram$count > 4,] # same here
+saveRDS(trigram, file = "data/trigram.RData")
+
+quadgram <- term_stats(sample, ngrams=4, types=TRUE)
+quadgram <- quadgram[quadgram$count > 1,] # same here
+saveRDS(quadgram, file = "data/quadgram.RData")
+```
+
